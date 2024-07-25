@@ -1,0 +1,127 @@
+File Formats in BIG DATA:
+
+Have you ever wondered why there are so much file formats and why we are using certain specified formats. The reason for this :
+
+1. We want to save storage
+2. We want Fast Processing
+3. We want less time for our I/O operations
+
+On choosing the right file format it will help us achieve these things. There are lot of choices available on File Formats with their own uniqueness and benefits.
+
+Some File Formats may help in:
+1. Faster reads
+2. Faster writes
+3. Splittable - In Big data solutions we consider only Splittable File    4. Formats
+5. Schema Evolution Support
+6. Advanced Compression
+7. Most Compatible Platforms 
+
+All the File Formats comes under two Broad categories:
+--------------------------------------------------------
+1. Row Based File Formats
+2. Column Based File Formats
+
+In Row Based File Formats the data is stored in row by row and it offers Faster writes whereas Column based File Formats the data is stored in column by column and it offers Faster reads.
+
+Lets see some of the Specialised File Formats that are widely used in Big data solutions:
+
+1. Avro
+2. ORC
+3. Parquet
+
+One common thing about all of them is Splittable and also any compression can be used along with them
+
+Avro:
+
+1. It is a Row Based File Format
+2. It will support Faster writes but slower reads incase when you want to read a subset of columns
+3. The schema for Avro file is stored in Json Form
+4. This data is self describing because the schema (metadata) is embedded as a part of your data itself. However the actual data is stored in a compressed binary format which is quite efficient in terms of Storage.
+5. Avro File is general and support processing using a lot of programming languages like c, c++, Java, Python,Ruby. It is Language Neutral.
+6. Avro is quite matured in terms of Schema Evolution.
+7. Avro is the best fit for storing the data in the Landing zone of a data lake. So whenever we do ETL kind of operations Avro is the good fit.
+
+ORC:
+
+1. ORC is a Column Based File Format
+2. Writes are not efficient but reads are very efficient.
+3. Highly Efficient in terms of Storage. Compression works here better than any Formats
+4. ORC offers something called as Predicate push down which is nothing but it filters the predicates and orc pushes the predicates at the Storage Level.
+5. ORC is best fit for Hive. It supports all datatypes including complex data types used in Hive.
+6. ORC also offers Schema Evolution but not as good as Avro
+
+Parquet: 
+
+1. Parquet is a Column Based File Format.
+2. Since it is a column based File Format it also offers Faster reads.
+3. Parquet is very good at handling nested data
+4. It also offers a very good compression and it also supports Schema Evolution to some Extent.
+5. It stores the metadata at the End of the File and that is why it is Self Describing.
+
+
+Compression Techniques In Hadoop:
+
+
+Compression techniques In Hive helps us to reduce storage costs and processing time.
+A major overhead in processing large amounts of data is disk and network I/O, reducing the amount of data that needs to be read and written to disk can significantly decrease overall processing time. 
+
+
+
+Different compression techniques in Hadoop :
+
+1.Snappy
+2.Lzo
+3.Gzip
+4.Bzip2
+
+Some of them are optimized for speed and others optimized for storage.
+
+1. Snappy:
+Snappy is a compression codec developed at Google for high compression speeds with reasonable compression. Although Snappy doesn’t offer the best compression sizes, it does provide a good trade-off between speed and size.
+
+Processing performance with Snappy can be significantly better
+than other compression formats.
+
+It’s important to note that Snappy is intended to be used with a container format like Avro, Orc, Parquet. Since it's not splittable.
+
+2. LZO:
+LZO is similar to Snappy in that it’s optimized for speed as opposed to size.
+
+Unlike Snappy, LZO compressed files are splittable, but this requires an additional indexing step.
+
+This makes LZO a good choice for things like plain-text files that are not being stored as part of a container format.
+
+It should also be noted that LZO’s license prevents it from being distributed with Hadoop and requires a separate install, unlike Snappy, which can be distributed with Hadoop.
+
+3. Gzip:
+Gzip provides very good compression performance (on average, about 2.5 times the compression that’d be offered by Snappy).
+
+But in terms of processing speed its slow.                                                                   
+
+Gzip is also not splittable by default, so it should be used
+with a container formats like avro , orc or parquet.
+
+Note: that one reason Gzip is sometimes slower
+than Snappy for processing is that Gzip compressed files take up fewer blocks, so fewer tasks are required for processing the same data.
+
+For this reason, using smaller blocks with Gzip can lead to better performance.
+
+
+4. Bzip2: 
+bzip2 provides excellent compression performance, but can be significantly slower than other compression codecs such as Snappy in terms of processing performance.
+
+Unlike Snappy and Gzip, bzip2 is 
+splittable by default.
+
+In the examples we have seen, bzip2 will normally compress
+around 9% better than GZip, in terms of storage space.
+
+However, this extra compression comes with a significant read/write performance cost.
+
+This performance difference will vary with different machines, but in general bzip2 is about 10 times slower than GZip.
+
+
+For this reason, it’s not an ideal codec for Hadoop storage, unless your primary need is reducing the storage footprint.
+
+One example of such a use case would be using Hadoop mainly
+for active archival purposes.
