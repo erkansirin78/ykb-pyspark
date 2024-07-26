@@ -1,0 +1,4 @@
+[DB]
+user_name = postgres
+password = Ankara06
+db_ip = postgresql
