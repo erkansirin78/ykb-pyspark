@@ -13,22 +13,25 @@
 - Spark Documents
 - Spark Dataframe
 - Spark SQL
-- Spark Built-in Data Sources
+- Spark Built-in Data Sources 
+- Spark External Data Sources
 
 ### Day3
-- Spark External Data Sources
-- Spark Cluster Managers
-- Submit Spark Applications
-- Tune and optimize Spark Applications
-
-### Day4
-- Spark ML
+- Spark ML Intro
 - Data preprocessing
 - Regression
-- Regression evaluation
-- Zaman Serisi
+- ML Pipelines
+- Classification
+- Classification Evaluation
+
+### Day4
+- Text Classification
+- Clustering
+- Clustering Evaluation
 
 ### Day5
-- Classification
-- Clustering
-- Model Evaluation
+- Time Series
+- Deployment of Scikit-learn Models on Spark
+- Scikit-learn ML Pipelines
+- Tune and Optimize Spark Applications
+- Q&A
