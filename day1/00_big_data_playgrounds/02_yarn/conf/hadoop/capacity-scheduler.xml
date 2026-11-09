@@ -1,0 +1,129 @@
+<?xml version="1.0"?>
+<!--
+  Two-queue lab CapacityScheduler.
+
+  bi   60% (max 100%)  - Hive on Tez submits here (see conf/tez/tez-site.xml
+                         tez.queue.name=bi). Can burst to the whole cluster
+                         when etl is idle.
+  etl  40% (max 100%)  - Spark submits here (see conf/spark/spark-defaults.conf
+                         spark.yarn.queue=etl). Same burst story.
+
+  With preemption enabled in yarn-site.xml, if Spark has eaten >40% of the
+  cluster and Hive needs its guaranteed 60% slice, the scheduler reclaims
+  Spark executor containers (AMs are never preempted). Without preemption
+  the over-quota queue keeps its containers until it voluntarily releases
+  them — but Tez session lifetime is short and Spark stages complete fast
+  enough on this lab that "soft" coexistence still works.
+
+  maximum-am-resource-percent bumped from 0.1 to 0.5 — on an 8 GB cluster
+  the 10% default would only allow ~819 MB of AMs cluster-wide, which is
+  not enough for a Tez AM + Spark AM together.
+-->
+<configuration>
+  <property>
+    <name>yarn.scheduler.capacity.maximum-applications</name>
+    <value>10000</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.maximum-am-resource-percent</name>
+    <value>0.5</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.resource-calculator</name>
+    <value>org.apache.hadoop.yarn.util.resource.DominantResourceCalculator</value>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.queues</name>
+    <value>bi,etl</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.capacity</name>
+    <value>100</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.acl_submit_applications</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.acl_administer_queue</name>
+    <value>*</value>
+  </property>
+
+  <!-- BI queue — Hive on Tez -->
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.capacity</name>
+    <value>60</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.maximum-capacity</name>
+    <value>100</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.user-limit-factor</name>
+    <value>2</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.state</name>
+    <value>RUNNING</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.acl_submit_applications</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.acl_administer_queue</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.disable_preemption</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.bi.ordering-policy</name>
+    <value>fifo</value>
+  </property>
+
+  <!-- ETL queue — Spark -->
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.capacity</name>
+    <value>40</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.maximum-capacity</name>
+    <value>100</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.user-limit-factor</name>
+    <value>2</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.state</name>
+    <value>RUNNING</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.acl_submit_applications</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.acl_administer_queue</name>
+    <value>*</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.disable_preemption</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>yarn.scheduler.capacity.root.etl.ordering-policy</name>
+    <value>fifo</value>
+  </property>
+
+  <!-- Default queue mapping by application type — if you don't set
+       spark.yarn.queue / tez.queue.name, this routes you automatically.
+       %application means "look at the submitted queue tag"; we fall back
+       to etl as the lab default so a bare `spark-submit` works. -->
+  <property>
+    <name>yarn.scheduler.capacity.queue-mappings-override.enable</name>
+    <value>false</value>
+  </property>
+</configuration>

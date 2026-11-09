@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>1</value>
+  </property>
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>/data/nn</value>
+  </property>
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>/data/dn</value>
+  </property>
+  <property>
+    <name>dfs.permissions.enabled</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>dfs.webhdfs.enabled</name>
+    <value>true</value>
+  </property>
+
+  <!-- Dev single-node: leave safe mode the instant the NameNode starts.
+       Default is "wait for 99.9% of blocks to be reported + 30s extension",
+       which on every `down`/`up` stalls writes (incl. Tez staging) for
+       30-90s. No durability trade-off that matters on one datanode. -->
+  <property>
+    <name>dfs.namenode.safemode.threshold-pct</name>
+    <value>0</value>
+  </property>
+  <property>
+    <name>dfs.namenode.safemode.extension</name>
+    <value>0</value>
+  </property>
+  <property>
+    <name>dfs.namenode.rpc-bind-host</name>
+    <value>0.0.0.0</value>
+  </property>
+  <property>
+    <name>dfs.namenode.http-bind-host</name>
+    <value>0.0.0.0</value>
+  </property>
+</configuration>

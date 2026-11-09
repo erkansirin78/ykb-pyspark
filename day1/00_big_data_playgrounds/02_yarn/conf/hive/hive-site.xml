@@ -1,0 +1,130 @@
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:postgresql://postgres:5432/metastore</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>org.postgresql.Driver</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionUserName</name>
+    <value>hive</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionPassword</name>
+    <value>hive</value>
+  </property>
+
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>/user/hive/warehouse</value>
+  </property>
+  <property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://hive-metastore:9083</value>
+  </property>
+  <property>
+    <name>hive.metastore.event.db.notification.api.auth</name>
+    <value>false</value>
+  </property>
+
+  <property>
+    <name>hive.server2.enable.doAs</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.server2.thrift.bind.host</name>
+    <value>0.0.0.0</value>
+  </property>
+  <property>
+    <name>hive.server2.thrift.port</name>
+    <value>10000</value>
+  </property>
+  <property>
+    <name>hive.server2.webui.host</name>
+    <value>0.0.0.0</value>
+  </property>
+  <property>
+    <name>hive.server2.webui.port</name>
+    <value>10002</value>
+  </property>
+  <property>
+    <name>hive.server2.active.passive.ha.enable</name>
+    <value>false</value>
+  </property>
+
+  <!-- Tez instead of MapReduce: Hive 4.0.1's MR engine is broken on Java 17
+       (Kryo plan-serialization). Tez 0.10.3 plus the add-opens JVM flags in
+       tez-site.xml lets INSERT/CTAS run through HiveServer2. The `tez`
+       one-shot service must have staged tez.tar.gz on HDFS first. -->
+  <property>
+    <name>hive.execution.engine</name>
+    <value>tez</value>
+  </property>
+  <property>
+    <name>hive.tez.container.size</name>
+    <value>1024</value>
+  </property>
+
+  <!-- HS2 Tez session lifecycle — keep YARN free for Spark. Without these,
+       HS2 starts a default Tez session at boot (prewarm) and per-query AMs
+       stick around for ~5 min after their last query, holding ~1 GB +
+       1 vcore each. On a single-NM lab that starves Spark. -->
+  <property>
+    <name>hive.server2.tez.initialize.default.sessions</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.server2.tez.session.lifetime</name>
+    <value>30s</value>
+  </property>
+  <property>
+    <name>hive.server2.idle.session.timeout</name>
+    <value>5m</value>
+  </property>
+
+  <!-- ACID v2 — Hive 4 requires these to be on or every `managed` CREATE TABLE
+       is silently translated by HMS to EXTERNAL_TABLE with
+       external.table.purge=true (TBLPROPERTY TRANSLATED_TO_EXTERNAL=TRUE), and
+       any explicit transactional=true CREATE fails with error 10265
+       "ACID table with a non-ACID transaction manager". With these three keys
+       on, ORC tables (bucketing optional in Hive 4) are full-ACID by default
+       and UPDATE / DELETE / MERGE / compaction all work. -->
+  <property>
+    <name>hive.support.concurrency</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.txn.manager</name>
+    <value>org.apache.hadoop.hive.ql.lockmgr.DbTxnManager</value>
+  </property>
+  <property>
+    <name>hive.compactor.initiator.on</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hive.compactor.worker.threads</name>
+    <value>1</value>
+  </property>
+  <!-- Without this, even with ACID on, a plain `CREATE TABLE ... STORED AS ORC`
+       is still translated by HMS to EXTERNAL_TABLE with external.table.purge=TRUE
+       and TBLPROPERTY TRANSLATED_TO_EXTERNAL=TRUE. With it on, plain CREATE
+       TABLE produces a real MANAGED_TABLE with transactional=true — matching
+       the Hive 4 "managed = ACID by default" semantics. -->
+  <property>
+    <name>hive.create.as.acid</name>
+    <value>true</value>
+  </property>
+
+  <!-- Compactor submits its YARN job through a different code path than
+       regular HS2 Tez DAGs, so it does NOT read tez.queue.name from
+       tez-site.xml. Without this it tries to submit to the literal queue
+       name "default" and fails with "unknown queue: default" against the
+       two-queue capacity-scheduler (bi, etl). Route compaction to bi. -->
+  <property>
+    <name>hive.compactor.job.queue</name>
+    <value>bi</value>
+  </property>
+</configuration>

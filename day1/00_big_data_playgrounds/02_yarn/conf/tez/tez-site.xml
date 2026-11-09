@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<configuration>
+  <!-- Tez framework tarball staged on HDFS by the one-shot `tez` service -->
+  <property>
+    <name>tez.lib.uris</name>
+    <value>hdfs:///apps/tez/tez.tar.gz</value>
+  </property>
+  <!-- Route all Hive-on-Tez DAGs to the bi queue (60%/100% in
+       conf/hadoop/capacity-scheduler.xml). -->
+  <property>
+    <name>tez.queue.name</name>
+    <value>bi</value>
+  </property>
+  <!-- Use the cluster's Hadoop jars instead of bundling them in tez.tar.gz -->
+  <property>
+    <name>tez.use.cluster.hadoop-libs</name>
+    <value>true</value>
+  </property>
+
+  <property>
+    <name>tez.am.resource.memory.mb</name>
+    <value>1024</value>
+  </property>
+  <property>
+    <name>tez.task.resource.memory.mb</name>
+    <value>1024</value>
+  </property>
+  <property>
+    <name>tez.runtime.io.sort.mb</name>
+    <value>256</value>
+  </property>
+  <property>
+    <name>tez.am.max.app.attempts</name>
+    <value>2</value>
+  </property>
+
+  <!-- Java 17 strong-encapsulation: Tez AM + task JVMs need the same
+       add-opens list the MR engine uses (see mapred-site.xml). Without
+       these, Tez DAGs fail with "Unable to make field ... accessible". -->
+  <property>
+    <name>tez.am.launch.cmd-opts</name>
+    <value>-XX:+UseG1GC --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.regex=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED --add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED</value>
+  </property>
+  <property>
+    <name>tez.task.launch.cmd-opts</name>
+    <value>-XX:+UseG1GC --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.regex=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED --add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED</value>
+  </property>
+</configuration>

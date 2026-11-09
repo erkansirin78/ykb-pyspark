@@ -1,0 +1,363 @@
+x-hadoop-common: &hadoop-common
+  image: apache/hadoop:3.5.0
+  user: root
+  networks:
+    - vbo
+  volumes:
+    - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+    - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+    - ./conf/hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
+    - ./conf/hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
+    - ./conf/hadoop/capacity-scheduler.xml:/opt/hadoop/etc/hadoop/capacity-scheduler.xml:ro
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    hostname: postgres
+    networks:
+      - vbo
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+      POSTGRES_DB: metastore
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
+
+  namenode:
+    <<: *hadoop-common
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      ENSURE_NAMENODE_DIR: "/data/nn"
+    volumes:
+      - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./conf/hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
+      - ./conf/hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
+      - nn-data:/data
+    command: ["hdfs", "namenode"]
+
+  datanode:
+    <<: *hadoop-common
+    container_name: datanode
+    hostname: datanode
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"
+    environment:
+      WAITFOR: "namenode:9000"
+    volumes:
+      - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./conf/hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
+      - ./conf/hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
+      - dn-data:/data
+    command: ["hdfs", "datanode"]
+
+  resourcemanager:
+    <<: *hadoop-common
+    container_name: resourcemanager
+    hostname: resourcemanager
+    depends_on:
+      - namenode
+    ports:
+      - "8088:8088"
+      - "8032:8032"
+    environment:
+      WAITFOR: "namenode:9000"
+    command: ["yarn", "resourcemanager"]
+
+  nodemanager:
+    <<: *hadoop-common
+    container_name: nodemanager
+    hostname: nodemanager
+    depends_on:
+      - resourcemanager
+    ports:
+      - "8042:8042"
+    environment:
+      WAITFOR: "resourcemanager:8088"
+    command: ["yarn", "nodemanager"]
+
+  mr-historyserver:
+    <<: *hadoop-common
+    container_name: mr-historyserver
+    hostname: mr-historyserver
+    depends_on:
+      - namenode
+      - resourcemanager
+    ports:
+      - "19888:19888"
+    environment:
+      WAITFOR: "resourcemanager:8088"
+    command: ["mapred", "historyserver"]
+
+  # One-shot: waits for HDFS to be writable, then creates the directory
+  # layout the stack needs (warehouse, spark-logs, per-user dirs). Replaces
+  # the old manual README bootstrap. Exits 0 when done.
+  hdfs-init:
+    image: apache/hadoop:3.5.0
+    container_name: hdfs-init
+    hostname: hdfs-init
+    user: root
+    depends_on:
+      - namenode
+      - datanode
+    networks:
+      - vbo
+    entrypoint: ["bash", "/opt/init/bootstrap-hdfs.sh"]
+    restart: "no"
+    volumes:
+      - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./conf/init:/opt/init:ro
+
+  # One-shot: copy the Hive 4.0.1 image's /opt/hive/lib into the
+  # `hive-libs` volume, which spark-client mounts as the Hive metastore
+  # client classpath (spark.sql.hive.metastore.jars=path). Without this,
+  # spark-defaults' `jars=maven` resolves ~250 Hive+Hadoop jars from
+  # Maven Central on every PySpark/spark-submit session start.
+  hive-libs-init:
+    image: apache/hive:4.0.1
+    container_name: hive-libs-init
+    hostname: hive-libs-init
+    user: root
+    networks:
+      - vbo
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        if [ -f /shared/.staged-4.0.1 ]; then
+          echo "[hive-libs] already staged ($(ls /shared | wc -l) jars)"
+          exit 0
+        fi
+        echo "[hive-libs] copying /opt/hive/lib -> /shared"
+        cp -r /opt/hive/lib/. /shared/
+        touch /shared/.staged-4.0.1
+        echo "[hive-libs] staged $(ls /shared | wc -l) jars ($(du -sh /shared | cut -f1))"
+    restart: "no"
+    volumes:
+      - hive-libs:/shared
+
+  # One-shot: downloads Apache Tez, extracts client libs to the `tez-dist`
+  # volume, and stages tez.tar.gz on HDFS. Exits 0 when done (no daemon).
+  tez:
+    image: apache/hadoop:3.5.0
+    container_name: tez
+    hostname: tez
+    user: root
+    depends_on:
+      namenode:
+        condition: service_started
+      hdfs-init:
+        condition: service_completed_successfully
+    networks:
+      - vbo
+    environment:
+      # Must match the tez-api bundled in apache/hive:4.0.1 (0.10.4): the
+      # framework tarball (AM), the HS2 client jars, and the image's
+      # tez-api all have to be one version, else the Tez AM dies with
+      # "GeneratedMessageV3.getUnknownFields ... supposed to be overridden".
+      TEZ_VERSION: "0.10.4"
+      TEZ_HOME: /opt/tez
+    entrypoint: ["bash", "/opt/tez-conf/stage-tez.sh"]
+    restart: "no"
+    volumes:
+      - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./conf/tez:/opt/tez-conf:ro
+      - tez-dist:/opt/tez
+
+  # Iceberg REST catalog (Cloudera/Databricks/Snowflake-style decoupling).
+  # Why this exists in the stack: Iceberg's HiveCatalog cannot speak to a
+  # Hive 4 HMS from Spark today (Spark bundles a Hive 2.3 client that
+  # calls the removed `get_table` method - see iceberg#12878 +
+  # HIVE-26537). A REST catalog sidesteps the JVM client-version
+  # coupling entirely - engines talk HTTP/JSON to this service, which
+  # holds the Iceberg metadata in Postgres and the data files in HDFS.
+  #
+  # Backed by Postgres DB `iceberg_catalog` (see init/postgres/02-*.sql).
+  # Data files land under hdfs:///user/iceberg.
+  iceberg-rest:
+    image: tabulario/iceberg-rest:1.6.0
+    container_name: iceberg-rest
+    hostname: iceberg-rest
+    depends_on:
+      postgres:
+        condition: service_started
+      namenode:
+        condition: service_started
+      hdfs-init:
+        condition: service_completed_successfully
+    networks:
+      - vbo
+    environment:
+      CATALOG_WAREHOUSE: hdfs://namenode:9000/user/iceberg
+      CATALOG_IO__IMPL: org.apache.iceberg.hadoop.HadoopFileIO
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres:5432/iceberg_catalog
+      CATALOG_JDBC_USER: hive
+      CATALOG_JDBC_PASSWORD: hive
+      # tabulario/iceberg-rest demands AWS_REGION even when warehouse is
+      # HDFS-backed; just a default placeholder.
+      AWS_REGION: us-east-1
+    volumes:
+      - ./conf/hadoop/core-site.xml:/opt/iceberg-rest-image/hadoop-conf/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/iceberg-rest-image/hadoop-conf/hdfs-site.xml:ro
+    ports:
+      - "8181:8181"
+
+  hive-metastore:
+    image: apache/hive:4.0.1
+    container_name: hive-metastore
+    hostname: hive-metastore
+    depends_on:
+      postgres:
+        condition: service_started
+      namenode:
+        condition: service_started
+      hdfs-init:
+        condition: service_completed_successfully
+    networks:
+      - vbo
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      VERBOSE: "true"
+    volumes:
+      - ./conf/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+      - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./conf/hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
+      - ./conf/hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
+      - ./jars/postgresql-42.7.4.jar:/opt/hive/lib/postgresql-42.7.4.jar:ro
+    ports:
+      - "9083:9083"
+
+  hiveserver2:
+    image: apache/hive:4.0.1
+    container_name: hiveserver2
+    hostname: hiveserver2
+    depends_on:
+      hive-metastore:
+        condition: service_started
+      tez:
+        condition: service_completed_successfully
+    networks:
+      - vbo
+    environment:
+      SERVICE_NAME: hiveserver2
+      IS_RESUME: "true"
+      # Put the staged Tez client jars on HiveServer2's classpath.
+      # MUST be a single flat dir of *.jar files: /opt/hive/bin/hive only
+      # globs jars when this is one directory, and Hive localizes each
+      # entry into the Tez session scratch dir — a dir with subdirs (or a
+      # colon-list) breaks with "Path is not a file: .../lib". The `tez`
+      # one-shot assembles /opt/tez/client (flat jar symlinks).
+      HIVE_AUX_JARS_PATH: /opt/tez/client
+      HIVESERVER2_PID_DIR: /run/hive
+    tmpfs:
+      - /run/hive
+    volumes:
+      - ./conf/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+      - ./conf/tez/tez-site.xml:/opt/hive/conf/tez-site.xml:ro
+      - ./conf/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./conf/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./conf/hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
+      - ./conf/hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
+      - ./jars/postgresql-42.7.4.jar:/opt/hive/lib/postgresql-42.7.4.jar:ro
+      - tez-dist:/opt/tez:ro
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+
+  spark-history:
+    image: spark:4.1.3-java21-python3
+    container_name: spark-history
+    hostname: spark-history
+    depends_on:
+      namenode:
+        condition: service_started
+      hdfs-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - vbo
+    environment:
+      HADOOP_CONF_DIR: /opt/hadoop-conf
+      SPARK_NO_DAEMONIZE: "true"
+    volumes:
+      - ./conf/hadoop:/opt/hadoop-conf:ro
+      - ./conf/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    ports:
+      - "18080:18080"
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+
+  spark-client:
+    image: spark:4.1.3-java21-python3
+    container_name: spark-client
+    hostname: spark-client
+    depends_on:
+      resourcemanager:
+        condition: service_started
+      hive-metastore:
+        condition: service_started
+      hive-libs-init:
+        condition: service_completed_successfully
+    networks:
+      - vbo
+    environment:
+      HADOOP_CONF_DIR: /opt/hadoop-conf
+      HOME: /tmp
+      _JAVA_OPTIONS: "-Duser.home=/tmp"
+    volumes:
+      - ./conf/hadoop:/opt/hadoop-conf:ro
+      - ./conf/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./conf/hive/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
+      - hive-libs:/opt/spark/hive-client-jars:ro
+      # Iceberg Spark runtime - pre-staged so Spark doesn't redownload
+      # from Maven Central on every session. Match Spark+Scala version.
+      - ./jars/iceberg-spark-runtime-4.1_2.13-1.11.0.jar:/opt/spark/jars/iceberg-spark-runtime-4.1_2.13-1.11.0.jar:ro
+    ports:
+      - "4040:4040"
+    command: sleep infinity
+
+  hue:
+    image: gethue/hue:latest
+    container_name: hue
+    hostname: hue
+    depends_on:
+      postgres:
+        condition: service_started
+      hiveserver2:
+        condition: service_started
+      resourcemanager:
+        condition: service_started
+      hdfs-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - vbo
+    volumes:
+      - ./conf/hue/hue.ini:/usr/share/hue/desktop/conf/z-hue.ini:ro
+    ports:
+      - "8888:8888"
+
+networks:
+  vbo:
+
+volumes:
+  pg-data:
+  nn-data:
+  dn-data:
+  tez-dist:
+  hive-libs:
