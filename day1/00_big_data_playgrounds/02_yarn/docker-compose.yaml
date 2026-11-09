@@ -324,11 +324,13 @@ services:
       - ./conf/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ./conf/hive/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
       - hive-libs:/opt/spark/hive-client-jars:ro
+      - ./spark_client:/tmp/.venv
       # Iceberg Spark runtime - pre-staged so Spark doesn't redownload
       # from Maven Central on every session. Match Spark+Scala version.
       - ./jars/iceberg-spark-runtime-4.1_2.13-1.11.0.jar:/opt/spark/jars/iceberg-spark-runtime-4.1_2.13-1.11.0.jar:ro
     ports:
       - "4040:4040"
+      - "8889:8888"   
     command: sleep infinity
 
   hue:
