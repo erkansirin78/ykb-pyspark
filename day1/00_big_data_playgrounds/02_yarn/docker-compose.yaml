@@ -83,7 +83,14 @@ services:
       - "8042:8042"
     environment:
       WAITFOR: "resourcemanager:8088"
-    command: ["yarn", "nodemanager"]
+    # libgomp1 (OpenMP) is required by native ML libs such as SynapseML LightGBM
+    # (lib_lightgbm.so). The apache/hadoop image does not ship it.
+    command:
+      - bash
+      - -c
+      - |
+        dpkg -s libgomp1 >/dev/null 2>&1 || (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgomp1)
+        exec yarn nodemanager
 
   mr-historyserver:
     <<: *hadoop-common
